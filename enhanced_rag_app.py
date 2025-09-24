@@ -71,12 +71,12 @@ class RAGConfig:
     def __init__(self, **kwargs):
         self.vector_db_url = kwargs.get('vector_db_url', "http://localhost:6333")
         self.collection_name = kwargs.get('collection_name', "documents")
-        self.embedding_model = kwargs.get('embedding_model', "text-embedding-3-large")
-        self.llm_model = kwargs.get('llm_model', "gpt-4-turbo-preview")
-        self.chunk_size = kwargs.get('chunk_size', 1000)
-        self.chunk_overlap = kwargs.get('chunk_overlap', 200)
-        self.top_k = kwargs.get('top_k', 5)
-        self.temperature = kwargs.get('temperature', 0.1)
+        self.embedding_model = "text-embedding-3-large"  # CHANGE THIS
+        self.llm_model = "gpt-4-turbo-preview"  # ALREADY CORRECT
+        self.chunk_size = 1500  # CHANGE FROM 1000 TO 1500
+        self.chunk_overlap = 300  # CHANGE FROM 200 TO 300
+        self.top_k = 15  # CHANGE FROM 5 TO 15
+        self.temperature = 0.1
 
 # Initialize session state
 if "rag_system" not in st.session_state:
@@ -229,6 +229,18 @@ def query_rag_system(question: str, rag_system: Dict, show_sources: bool = True)
             question, 
             k=rag_system['config'].top_k
         )
+
+        # Deduplicate by content instead of chunk_id
+        seen_content = set()
+        unique_docs = []
+        for doc in docs:
+            # Use first 100 characters as content fingerprint
+            content_fingerprint = doc.page_content[:100]
+            if content_fingerprint not in seen_content:
+                seen_content.add(content_fingerprint)
+                unique_docs.append(doc)
+        
+        docs = unique_docs
         
         if not docs:
             return {
@@ -237,18 +249,24 @@ def query_rag_system(question: str, rag_system: Dict, show_sources: bool = True)
                 'processing_time': time.time() - start_time
             }
         
+        # Rest of your code stays the same...
+        
         # Create context
         context = "\n\n---\n\n".join([f"Document {i+1}:\n{doc.page_content}" for i, doc in enumerate(docs)])
         
         # Create prompt
-        prompt = f"""Based on the following document excerpts, provide a comprehensive and accurate answer to the question. If the information is not available in the documents, clearly state this.
+        prompt = f"""You are an AI assistant with access to transcribed conversations between Gerro and Angus about rugby strategy and game planning. Angus is a rugby expert who shared his knowledge with Gerro to help create this system.
+Your role is to act as Angus's rugby knowledge base, providing expert advice to people who may not know rugby well. Answer questions as if you're sharing Angus's insights and expertise about practice sessions, game strategy, and rugby fundamentals.
+Based on the following conversation excerpts between Gerro and Angus, provide helpful rugby advice and guidance. Try to use the documents info as much as possible compared to just general rugby knowledge. We specificily want to pick Angus's brain.
+IMPORTANT: Keep your responses concise and direct. Aim for short answers, with a few sentances. Focus on the most actionable advice. Don't mention that we're using this in a RAG system just focus on the topic of rugby advice.
 
-Document Excerpts:
+
+Here is the document Excerpts:
 {context}
 
-Question: {question}
+Here is the RAG app Question: {question}
 
-Please provide a detailed answer based on the information available in the documents. If you reference specific information, mention which document number it comes from.
+Please provide a detailed answer based on the information available in the documents.
 
 Answer:"""
         
@@ -312,7 +330,8 @@ def display_chat_message(message: Dict, is_user: bool = True):
 
 # Main application
 def main():
-    st.markdown('<h1 class="main-header">🧠 Enhanced RAG System</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">🧠 Rugby Coach AI - Powered by Angus\'s Expertise</h1>', unsafe_allow_html=True)
+    st.markdown("*Optimized demo configuration with GPT-4 Turbo and maximum retrieval power*")
     
     # Check API key first
     if not check_api_key():
@@ -322,50 +341,32 @@ def main():
     
     # Sidebar configuration
     with st.sidebar:
-        st.header("⚙️ Configuration")
+        st.header("⚙️ System Control")
         
-        # System settings
-        st.subheader("System Settings")
-        chunk_size = st.slider("Chunk Size", min_value=200, max_value=2000, value=1000, step=100)
-        chunk_overlap = st.slider("Chunk Overlap", min_value=0, max_value=500, value=200, step=50)
-        top_k = st.slider("Retrieval K", min_value=1, max_value=20, value=5)
-        temperature = st.slider("LLM Temperature", min_value=0.0, max_value=1.0, value=0.1, step=0.1)
-        
-        # Model selection
-        st.subheader("Models")
-        embedding_model = st.selectbox(
-            "Embedding Model",
-            ["text-embedding-3-large", "text-embedding-3-small", "text-embedding-ada-002"]
-        )
-        
-        llm_model = st.selectbox(
-            "LLM Model", 
-            ["gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"]
-        )
-        
-        # Document management
+        # Document management only
         st.subheader("📁 Document Management")
         
         # Show current documents
         documents_path = "./documents"
         if os.path.exists(documents_path):
-            doc_files = [f for f in os.listdir(documents_path) if os.path.isfile(os.path.join(documents_path, f))]
+            doc_files = [f for f in os.listdir(documents_path) 
+                        if os.path.isfile(os.path.join(documents_path, f)) 
+                        and not f.startswith('.') 
+                        and not f.startswith('__')]
             st.write(f"📄 Documents found: {len(doc_files)}")
             if doc_files:
                 with st.expander("View documents"):
                     for doc in doc_files:
-                        st.text(f"• {doc}")
+                        file_path = os.path.join(documents_path, doc)
+                        try:
+                            file_size = os.path.getsize(file_path)
+                            st.text(f"• {doc} ({file_size} bytes)")
+                        except:
+                            st.text(f"• {doc}")
         
         # Initialize system button
         if st.button("🚀 Initialize System", type="primary"):
-            config = RAGConfig(
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                top_k=top_k,
-                temperature=temperature,
-                embedding_model=embedding_model,
-                llm_model=llm_model
-            )
+            config = RAGConfig()  # Use default optimal settings
             
             with st.spinner("Initializing RAG system..."):
                 rag_system = setup_rag_system(config)
@@ -380,16 +381,16 @@ def main():
         if st.session_state.system_ready:
             st.success("✅ System Ready")
             
-            # Show system stats
-            st.subheader("📊 System Stats")
-            st.markdown(f"""
-            <div class="metric-card">
-                <strong>Documents:</strong> {st.session_state.documents_processed}<br>
-                <strong>Chunks:</strong> {st.session_state.chunks_created}<br>
-                <strong>Model:</strong> {llm_model}<br>
-                <strong>Embedding:</strong> {embedding_model}
-            </div>
-            """, unsafe_allow_html=True)
+            # Show optimized system stats
+            st.subheader("📊 System Configuration")
+            st.markdown("""
+            **Optimized for Demo:**
+            - **Model:** GPT-4 Turbo (Most Powerful)
+            - **Embeddings:** text-embedding-3-large
+            - **Chunk Size:** 1500 characters
+            - **Retrieval:** Top 15 most relevant chunks
+            - **Documents:** """ + str(st.session_state.documents_processed) + """
+            - **Chunks:** """ + str(st.session_state.chunks_created))
         else:
             st.warning("⚠️ System Not Ready")
         
