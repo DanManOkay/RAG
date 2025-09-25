@@ -20,9 +20,6 @@ venv.bak/
 qdrant_storage/
 chroma_db/
 
-# Documents (you may want to remove this line to include your docs)
-documents/
-
 # IDE
 .vscode/
 .idea/
