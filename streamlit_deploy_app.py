@@ -96,25 +96,6 @@ def check_api_key():
     api_key = os.getenv('OPENAI_API_KEY')
     return api_key and api_key != "your_openai_api_key_here" and len(api_key) > 20
 
-def initialize_qdrant_collection(client, collection_name, embedding_dim=3072):
-    """Initialize Qdrant collection"""
-    try:
-        collections = client.get_collections()
-        collection_names = [c.name for c in collections.collections]
-        
-        if collection_name not in collection_names:
-            client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(
-                    size=embedding_dim,
-                    distance=Distance.COSINE
-                )
-            )
-            return f"Created new collection: {collection_name}"
-        else:
-            return f"Using existing collection: {collection_name}"
-    except Exception as e:
-        return f"Error with collection: {str(e)}"
 
 def load_and_process_documents(documents_path: str, config: RAGConfig):
     """Load and process documents"""
@@ -184,14 +165,9 @@ def load_and_process_documents(documents_path: str, config: RAGConfig):
 def setup_rag_system(config: RAGConfig):
     """Setup the RAG system"""
     try:
-        # Initialize components
-        client = QdrantClient(url=config.vector_db_url)
+        # Initialize components (no Qdrant client needed)
         embeddings = OpenAIEmbeddings(model=config.embedding_model)
         llm = ChatOpenAI(model=config.llm_model, temperature=config.temperature)
-        
-        # Initialize collection
-        collection_status = initialize_qdrant_collection(client, config.collection_name)
-        st.info(collection_status)
         
         # Load and process documents
         documents, chunks = load_and_process_documents("./documents", config)
@@ -199,20 +175,14 @@ def setup_rag_system(config: RAGConfig):
         if not chunks:
             return None
         
-        
-        # Create vector store (in-memory for deployment)
+        # Create vector store (ChromaDB - in-memory for deployment)
         with st.spinner("Creating embeddings and storing in vector database..."):
-            from langchain_community.vectorstores import Chroma
-            vector_store = Chroma.from_documents(
-                chunks,
-                embeddings
-            )
+            vector_store = Chroma.from_documents(chunks, embeddings)
         
         return {
             'vector_store': vector_store,
             'llm': llm,
             'config': config,
-            'client': client,
             'embeddings': embeddings
         }
         
@@ -499,12 +469,7 @@ def main():
             st.text(f"Temperature: {config.temperature}")
             
             # Vector database status
-            try:
-                client = st.session_state.rag_system['client']
-                collections = client.get_collections()
-                st.text(f"Collections: {len(collections.collections)}")
-            except:
-                st.text("Collections: Error")
+            st.text("Database: ChromaDB (In-Memory)")
         else:
             st.text("System not initialized")
 
