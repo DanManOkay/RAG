@@ -11,11 +11,13 @@ from datetime import datetime
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import Qdrant
-from langchain_community.document_loaders import DirectoryLoader, UnstructuredFileLoader
+from langchain_community.document_loaders import (
+    TextLoader,
+    PyPDFLoader,
+    Docx2txtLoader
+)
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-#from qdrant_client import QdrantClient
-#from qdrant_client.models import Distance, VectorParams
-from langchain_community.vectorstores import Chroma  # Add this line
+from langchain_community.vectorstores import FAISS
 
 # Load environment
 load_dotenv()
@@ -64,19 +66,42 @@ st.markdown("""
         border-radius: 0.5rem;
         border-left: 4px solid #28a745;
     }
+    .upload-section {
+        background-color: #f0f8ff;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        border: 2px dashed #1f77b4;
+        margin: 1rem 0;
+    }
+    .prompt-section {
+        background-color: #fff9e6;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        border: 2px solid #ffc107;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# Default system prompt
+DEFAULT_SYSTEM_PROMPT = """You are an AI assistant with access to transcribed conversations between Gerro and Angus about rugby strategy and game planning. Angus is a rugby expert who shared his knowledge with Gerro to help create this system.
+
+Your role is to act as Angus's rugby knowledge base, providing expert advice to people who may not know rugby well. Answer questions as if you're sharing Angus's insights and expertise about practice sessions, game strategy, and rugby fundamentals.
+
+Based on the following conversation excerpts between Gerro and Angus, provide helpful rugby advice and guidance. Try to use the documents info as much as possible compared to just general rugby knowledge. We specifically want to pick Angus's brain.
+
+IMPORTANT: Keep your responses concise and direct. Aim for short answers, with a few sentences. Focus on the most actionable advice. Don't mention that we're using this in a RAG system just focus on the topic of rugby advice."""
 
 # Configuration class
 class RAGConfig:
     def __init__(self, **kwargs):
         self.vector_db_url = kwargs.get('vector_db_url', "http://localhost:6333")
         self.collection_name = kwargs.get('collection_name', "documents")
-        self.embedding_model = "text-embedding-3-large"  # CHANGE THIS
-        self.llm_model = "gpt-4-turbo-preview"  # ALREADY CORRECT
-        self.chunk_size = 1500  # CHANGE FROM 1000 TO 1500
-        self.chunk_overlap = 300  # CHANGE FROM 200 TO 300
-        self.top_k = 15  # CHANGE FROM 5 TO 15
+        self.embedding_model = "text-embedding-3-large"
+        self.llm_model = "gpt-4-turbo-preview"
+        self.chunk_size = 1500
+        self.chunk_overlap = 300
+        self.top_k = 15
         self.temperature = 0.1
 
 # Initialize session state
@@ -90,15 +115,42 @@ if "documents_processed" not in st.session_state:
     st.session_state.documents_processed = 0
 if "chunks_created" not in st.session_state:
     st.session_state.chunks_created = 0
+if "uploaded_files" not in st.session_state:
+    st.session_state.uploaded_files = []
+if "temp_dir" not in st.session_state:
+    st.session_state.temp_dir = "./temp_uploads"
+if "system_prompt" not in st.session_state:
+    st.session_state.system_prompt = DEFAULT_SYSTEM_PROMPT
 
 def check_api_key():
     """Check if OpenAI API key is configured"""
     api_key = os.getenv('OPENAI_API_KEY')
     return api_key and api_key != "your_openai_api_key_here" and len(api_key) > 20
 
+def save_uploaded_files(uploaded_files):
+    """Save uploaded files to temporary directory"""
+    # Create temp directory if it doesn't exist
+    temp_dir = st.session_state.temp_dir
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    saved_files = []
+    for uploaded_file in uploaded_files:
+        try:
+            # Save file
+            file_path = os.path.join(temp_dir, uploaded_file.name)
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            saved_files.append(uploaded_file.name)
+        except Exception as e:
+            st.error(f"Error saving {uploaded_file.name}: {str(e)}")
+    
+    return saved_files
 
 def load_and_process_documents(documents_path: str, config: RAGConfig):
-    """Load and process documents"""
+    """Load and process documents WITHOUT unstructured"""
+    
     progress_bar = st.progress(0)
     status_text = st.empty()
     
@@ -107,17 +159,40 @@ def load_and_process_documents(documents_path: str, config: RAGConfig):
         status_text.text("Loading documents...")
         progress_bar.progress(20)
         
-        if not os.path.exists(documents_path) or not os.listdir(documents_path):
+        if not os.path.exists(documents_path):
+            st.error(f"Directory not found: {documents_path}")
+            return None, None
+        
+        # Get all files
+        doc_files = []
+        for ext in ['*.txt', '*.pdf', '*.docx', '*.doc']:
+            doc_files.extend(Path(documents_path).glob(f"**/{ext}"))
+        
+        if not doc_files:
             st.error(f"No documents found in {documents_path}")
             return None, None
         
-        loader = DirectoryLoader(
-            documents_path,
-            glob="**/*",
-            loader_cls=UnstructuredFileLoader,
-            show_progress=True
-        )
-        documents = loader.load()
+        # Load each file with appropriate loader
+        documents = []
+        for file_path in doc_files:
+            try:
+                status_text.text(f"Loading {file_path.name}...")
+                
+                if file_path.suffix.lower() == '.txt':
+                    loader = TextLoader(str(file_path), encoding='utf-8')
+                    documents.extend(loader.load())
+                    
+                elif file_path.suffix.lower() == '.pdf':
+                    loader = PyPDFLoader(str(file_path))
+                    documents.extend(loader.load())
+                    
+                elif file_path.suffix.lower() in ['.docx', '.doc']:
+                    loader = Docx2txtLoader(str(file_path))
+                    documents.extend(loader.load())
+                    
+            except Exception as e:
+                st.warning(f"Could not load {file_path.name}: {str(e)}")
+                continue
         
         if not documents:
             st.error("No documents could be loaded")
@@ -149,7 +224,7 @@ def load_and_process_documents(documents_path: str, config: RAGConfig):
         st.session_state.chunks_created = len(chunks)
         
         progress_bar.progress(100)
-        status_text.text("Documents processed successfully!")
+        status_text.text(f"✅ Loaded {len(documents)} documents into {len(chunks)} chunks!")
         time.sleep(1)
         progress_bar.empty()
         status_text.empty()
@@ -162,22 +237,22 @@ def load_and_process_documents(documents_path: str, config: RAGConfig):
         status_text.empty()
         return None, None
 
-def setup_rag_system(config: RAGConfig):
+def setup_rag_system(config: RAGConfig, documents_path: str):
     """Setup the RAG system"""
     try:
-        # Initialize components (no Qdrant client needed)
+        # Initialize components
         embeddings = OpenAIEmbeddings(model=config.embedding_model)
         llm = ChatOpenAI(model=config.llm_model, temperature=config.temperature)
         
         # Load and process documents
-        documents, chunks = load_and_process_documents("./documents", config)
+        documents, chunks = load_and_process_documents(documents_path, config)
         
         if not chunks:
             return None
         
-        # Create vector store (ChromaDB - in-memory for deployment)
+        # Create vector store with FAISS
         with st.spinner("Creating embeddings and storing in vector database..."):
-            vector_store = Chroma.from_documents(chunks, embeddings)
+            vector_store = FAISS.from_documents(chunks, embeddings)
         
         return {
             'vector_store': vector_store,
@@ -201,11 +276,10 @@ def query_rag_system(question: str, rag_system: Dict, show_sources: bool = True)
             k=rag_system['config'].top_k
         )
 
-        # Deduplicate by content instead of chunk_id
+        # Deduplicate by content
         seen_content = set()
         unique_docs = []
         for doc in docs:
-            # Use first 100 characters as content fingerprint
             content_fingerprint = doc.page_content[:100]
             if content_fingerprint not in seen_content:
                 seen_content.add(content_fingerprint)
@@ -220,22 +294,16 @@ def query_rag_system(question: str, rag_system: Dict, show_sources: bool = True)
                 'processing_time': time.time() - start_time
             }
         
-        # Rest of your code stays the same...
-        
         # Create context
         context = "\n\n---\n\n".join([f"Document {i+1}:\n{doc.page_content}" for i, doc in enumerate(docs)])
         
-        # Create prompt
-        prompt = f"""You are an AI assistant with access to transcribed conversations between Gerro and Angus about rugby strategy and game planning. Angus is a rugby expert who shared his knowledge with Gerro to help create this system.
-Your role is to act as Angus's rugby knowledge base, providing expert advice to people who may not know rugby well. Answer questions as if you're sharing Angus's insights and expertise about practice sessions, game strategy, and rugby fundamentals.
-Based on the following conversation excerpts between Gerro and Angus, provide helpful rugby advice and guidance. Try to use the documents info as much as possible compared to just general rugby knowledge. We specificily want to pick Angus's brain.
-IMPORTANT: Keep your responses concise and direct. Aim for short answers, with a few sentances. Focus on the most actionable advice. Don't mention that we're using this in a RAG system just focus on the topic of rugby advice.
+        # Use custom system prompt from session state
+        prompt = f"""{st.session_state.system_prompt}
 
-
-Here is the document Excerpts:
+Here are the document Excerpts:
 {context}
 
-Here is the RAG app Question: {question}
+Here is the Question: {question}
 
 Please provide a detailed answer based on the information available in the documents.
 
@@ -314,39 +382,106 @@ def main():
     with st.sidebar:
         st.header("⚙️ System Control")
         
-        # Document management only
-        st.subheader("📁 Document Management")
+        # Document Upload Section
+        st.subheader("📤 Step 1: Upload Documents")
         
-        # Show current documents
-        documents_path = "./documents"
-        if os.path.exists(documents_path):
-            doc_files = [f for f in os.listdir(documents_path) 
-                        if os.path.isfile(os.path.join(documents_path, f)) 
-                        and not f.startswith('.') 
-                        and not f.startswith('__')]
-            st.write(f"📄 Documents found: {len(doc_files)}")
-            if doc_files:
-                with st.expander("View documents"):
-                    for doc in doc_files:
-                        file_path = os.path.join(documents_path, doc)
-                        try:
-                            file_size = os.path.getsize(file_path)
-                            st.text(f"• {doc} ({file_size} bytes)")
-                        except:
-                            st.text(f"• {doc}")
+        st.markdown("""
+        <div class="upload-section">
+        Upload your documents here.<br>
+        Supported formats: PDF, DOCX, DOC, TXT
+        </div>
+        """, unsafe_allow_html=True)
+        
+        uploaded_files = st.file_uploader(
+            "Choose files",
+            type=['pdf', 'docx', 'doc', 'txt'],
+            accept_multiple_files=True,
+            key="file_uploader"
+        )
+        
+        if uploaded_files:
+            st.success(f"✅ {len(uploaded_files)} file(s) uploaded")
+            
+            # Show uploaded files
+            with st.expander("View uploaded files"):
+                for file in uploaded_files:
+                    file_size = len(file.getvalue())
+                    st.text(f"• {file.name} ({file_size:,} bytes)")
+            
+            # Save files button
+            if st.button("💾 Save Uploaded Files", type="secondary"):
+                with st.spinner("Saving files..."):
+                    saved_files = save_uploaded_files(uploaded_files)
+                    st.session_state.uploaded_files = saved_files
+                    st.success(f"✅ Saved {len(saved_files)} file(s)")
+                    st.rerun()
+        
+        # Show currently saved files
+        if st.session_state.uploaded_files:
+            st.write(f"📄 Documents ready: {len(st.session_state.uploaded_files)}")
+            with st.expander("View saved documents"):
+                for doc in st.session_state.uploaded_files:
+                    st.text(f"• {doc}")
+        
+        st.divider()
+        
+        # System Prompt Configuration
+        st.subheader("✏️ Step 2: Configure System Prompt")
+        
+        st.markdown("""
+        <div class="prompt-section">
+        Customize how the AI assistant should behave and respond.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Text area for system prompt
+        system_prompt = st.text_area(
+            "System Prompt",
+            value=st.session_state.system_prompt,
+            height=300,
+            help="This prompt defines how the AI assistant will behave. It will be prepended to every query.",
+            key="prompt_input"
+        )
+        
+        # Update prompt button
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("💾 Save Prompt", type="secondary"):
+                st.session_state.system_prompt = system_prompt
+                st.success("✅ Prompt saved!")
+        
+        with col2:
+            if st.button("🔄 Reset to Default"):
+                st.session_state.system_prompt = DEFAULT_SYSTEM_PROMPT
+                st.success("✅ Reset to default!")
+                st.rerun()
+        
+        # Show current prompt info
+        prompt_length = len(st.session_state.system_prompt)
+        st.caption(f"Current prompt: {prompt_length} characters")
+        
+        st.divider()
         
         # Initialize system button
-        if st.button("🚀 Initialize System", type="primary"):
-            config = RAGConfig()  # Use default optimal settings
-            
-            with st.spinner("Initializing RAG system..."):
-                rag_system = setup_rag_system(config)
+        st.subheader("🚀 Step 3: Initialize System")
+        
+        if st.session_state.uploaded_files and st.session_state.system_prompt:
+            if st.button("🚀 Initialize RAG System", type="primary"):
+                config = RAGConfig()
                 
-                if rag_system:
-                    st.session_state.rag_system = rag_system
-                    st.session_state.system_ready = True
-                    st.success("✅ System initialized successfully!")
-                    st.rerun()
+                with st.spinner("Initializing RAG system..."):
+                    rag_system = setup_rag_system(config, st.session_state.temp_dir)
+                    
+                    if rag_system:
+                        st.session_state.rag_system = rag_system
+                        st.session_state.system_ready = True
+                        st.success("✅ System initialized successfully!")
+                        st.rerun()
+        else:
+            if not st.session_state.uploaded_files:
+                st.info("👆 Please upload and save documents first")
+            if not st.session_state.system_prompt:
+                st.info("👆 Please configure system prompt")
         
         # System status
         if st.session_state.system_ready:
@@ -361,13 +496,30 @@ def main():
             - **Chunk Size:** 1500 characters
             - **Retrieval:** Top 15 most relevant chunks
             - **Documents:** """ + str(st.session_state.documents_processed) + """
-            - **Chunks:** """ + str(st.session_state.chunks_created))
+            - **Chunks:** """ + str(st.session_state.chunks_created) + """
+            - **Prompt Length:** """ + str(len(st.session_state.system_prompt)) + """ chars""")
         else:
             st.warning("⚠️ System Not Ready")
+        
+        st.divider()
         
         # Clear chat button
         if st.button("🗑️ Clear Chat"):
             st.session_state.chat_history = []
+            st.rerun()
+        
+        # Reset system button
+        if st.button("🔄 Reset Everything", type="secondary"):
+            st.session_state.rag_system = None
+            st.session_state.chat_history = []
+            st.session_state.system_ready = False
+            st.session_state.documents_processed = 0
+            st.session_state.chunks_created = 0
+            st.session_state.uploaded_files = []
+            st.session_state.system_prompt = DEFAULT_SYSTEM_PROMPT
+            if os.path.exists(st.session_state.temp_dir):
+                shutil.rmtree(st.session_state.temp_dir)
+            st.success("✅ System reset!")
             st.rerun()
     
     # Main content area
@@ -426,7 +578,7 @@ def main():
                     st.info("Try asking:\n" + "\n".join(f"• {ex}" for ex in examples))
         
         else:
-            st.info("👈 Please configure and initialize the system in the sidebar first.")
+            st.info("👈 Please complete all setup steps in the sidebar first.")
     
     with col2:
         st.header("📈 Analytics")
@@ -467,9 +619,7 @@ def main():
             st.text(f"Chunk Size: {config.chunk_size}")
             st.text(f"Top-K: {config.top_k}")
             st.text(f"Temperature: {config.temperature}")
-            
-            # Vector database status
-            st.text("Database: ChromaDB (In-Memory)")
+            st.text("Database: FAISS (In-Memory)")
         else:
             st.text("System not initialized")
 
