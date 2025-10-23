@@ -494,7 +494,7 @@ def main():
                     "gpt-5-nano"
                 ],
                 index=0,
-                help="The AI model that generates responses. GPT-4 Turbo is most powerful."
+                help="The AI model that generates responses."
             )
             
             embedding_model = st.selectbox(
