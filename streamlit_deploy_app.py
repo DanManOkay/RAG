@@ -24,7 +24,7 @@ load_dotenv()
 
 # Page configuration
 st.set_page_config(
-    page_title="Enhanced RAG System",
+    page_title="RAG System",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -379,8 +379,8 @@ def display_chat_message(message: Dict, is_user: bool = True):
 
 # Main application
 def main():
-    st.markdown('<h1 class="main-header">🧠 Enhanced RAG System</h1>', unsafe_allow_html=True)
-    st.markdown("*Customizable document Q&A with GPT-4*")
+    st.markdown('<h1 class="main-header">🧠 RAG Tester</h1>', unsafe_allow_html=True)
+    st.markdown("*Customizable document Q&A*")
     
     # Check API key first
     if not check_api_key():
