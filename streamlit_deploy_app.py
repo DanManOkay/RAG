@@ -369,7 +369,7 @@ def display_chat_message(message: Dict, is_user: bool = True):
 
 # Main application
 def main():
-    st.markdown('<h1 class="main-header">🧠 Rugby Coach AI - Powered by Angus\'s Expertise</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">🧠 Rugby Coach AI - Powered1232 by Angus\'s Expertise</h1>', unsafe_allow_html=True)
     st.markdown("*Optimized demo configuration with GPT-4 Turbo and maximum retrieval power*")
     
     # Check API key first
