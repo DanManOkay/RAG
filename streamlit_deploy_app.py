@@ -91,7 +91,7 @@ class RAGConfig:
         self.vector_db_url = kwargs.get('vector_db_url', "http://localhost:6333")
         self.collection_name = kwargs.get('collection_name', "documents")
         self.embedding_model = "text-embedding-3-large"
-        self.llm_model = "gpt-5"
+        self.llm_model = "gpt-5-nano"
         self.chunk_size = 1500
         self.chunk_overlap = 300
         self.top_k = 15
