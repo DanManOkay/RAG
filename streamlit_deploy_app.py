@@ -84,14 +84,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Default system prompt
-DEFAULT_SYSTEM_PROMPT = """You are an AI assistant with access to transcribed conversations between Gerro and Angus about rugby strategy and game planning. Angus is a rugby expert who shared his knowledge with Gerro to help create this system.
-
-Your role is to act as Angus's rugby knowledge base, providing expert advice to people who may not know rugby well. Answer questions as if you're sharing Angus's insights and expertise about practice sessions, game strategy, and rugby fundamentals.
-
-Based on the following conversation excerpts between Gerro and Angus, provide helpful rugby advice and guidance. Try to use the documents info as much as possible compared to just general rugby knowledge. We specifically want to pick Angus's brain.
-
-IMPORTANT: Keep your responses concise and direct. Aim for short answers, with a few sentences. Focus on the most actionable advice. Don't mention that we're using this in a RAG system just focus on the topic of rugby advice."""
-
+DEFAULT_SYSTEM_PROMPT = ""
 # Configuration class
 class RAGConfig:
     def __init__(self, **kwargs):
