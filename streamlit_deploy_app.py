@@ -490,9 +490,8 @@ def main():
                 "LLM Model",
                 options=[
                     "gpt-4-turbo-preview",
-                    "gpt-4",
-                    "gpt-3.5-turbo",
-                    "gpt-4o"
+                    "gpt-4o",
+                    "gpt-5-nano"
                 ],
                 index=0,
                 help="The AI model that generates responses. GPT-4 Turbo is most powerful."
