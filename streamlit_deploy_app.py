@@ -484,7 +484,7 @@ def main():
             st.subheader("📊 System Configuration")
             st.markdown("""
             **Optimized for Demo:**
-            - **Model:** GPT-4 Turbo (Most Powerful)
+            - **Model:** GPT-5-nano
             - **Embeddings:** text-embedding-3-large
             - **Chunk Size:** 1500 characters
             - **Retrieval:** Top 15 most relevant chunks
