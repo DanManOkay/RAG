@@ -91,7 +91,7 @@ class RAGConfig:
         self.vector_db_url = kwargs.get('vector_db_url', "http://localhost:6333")
         self.collection_name = kwargs.get('collection_name', "documents")
         self.embedding_model = "text-embedding-3-large"
-        self.llm_model = "gpt-5-nano"
+        self.llm_model = "gpt-4-turbo-preview"
         self.chunk_size = 1500
         self.chunk_overlap = 300
         self.top_k = 15
@@ -484,7 +484,7 @@ def main():
             st.subheader("📊 System Configuration")
             st.markdown("""
             **Optimized for Demo:**
-            - **Model:** GPT-5-nano
+            - **Model:** GPT-4 Turbo (Most Powerful)
             - **Embeddings:** text-embedding-3-large
             - **Chunk Size:** 1500 characters
             - **Retrieval:** Top 15 most relevant chunks
