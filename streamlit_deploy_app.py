@@ -369,8 +369,8 @@ def display_chat_message(message: Dict, is_user: bool = True):
 
 # Main application
 def main():
-    st.markdown('<h1 class="main-header">🧠 Rugby Coach AI - Powered1232 by Angus\'s Expertise</h1>', unsafe_allow_html=True)
-    st.markdown("*Optimized demo configuration with GPT-4 Turbo and maximum retrieval power*")
+    st.markdown('<h1 class="main-header">🧠 RAG tester </h1>', unsafe_allow_html=True)
+    st.markdown("*Upload docs and prompt first*")
     
     # Check API key first
     if not check_api_key():
