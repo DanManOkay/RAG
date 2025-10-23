@@ -80,22 +80,30 @@ st.markdown("""
         border: 2px solid #ffc107;
         margin: 1rem 0;
     }
+    .config-section {
+        background-color: #f0fff4;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        border: 2px solid #4caf50;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Default system prompt
+# Default system prompt - BLANK
 DEFAULT_SYSTEM_PROMPT = ""
+
 # Configuration class
 class RAGConfig:
     def __init__(self, **kwargs):
         self.vector_db_url = kwargs.get('vector_db_url', "http://localhost:6333")
         self.collection_name = kwargs.get('collection_name', "documents")
-        self.embedding_model = "text-embedding-3-large"
-        self.llm_model = "gpt-4-turbo-preview"
-        self.chunk_size = 1500
-        self.chunk_overlap = 300
-        self.top_k = 15
-        self.temperature = 0.1
+        self.embedding_model = kwargs.get('embedding_model', "text-embedding-3-large")
+        self.llm_model = kwargs.get('llm_model', "gpt-4-turbo-preview")
+        self.chunk_size = kwargs.get('chunk_size', 1500)
+        self.chunk_overlap = kwargs.get('chunk_overlap', 300)
+        self.top_k = kwargs.get('top_k', 15)
+        self.temperature = kwargs.get('temperature', 0.1)
 
 # Initialize session state
 if "rag_system" not in st.session_state:
@@ -114,6 +122,15 @@ if "temp_dir" not in st.session_state:
     st.session_state.temp_dir = "./temp_uploads"
 if "system_prompt" not in st.session_state:
     st.session_state.system_prompt = DEFAULT_SYSTEM_PROMPT
+if "rag_config" not in st.session_state:
+    st.session_state.rag_config = {
+        'llm_model': 'gpt-4-turbo-preview',
+        'embedding_model': 'text-embedding-3-large',
+        'temperature': 0.1,
+        'chunk_size': 1500,
+        'chunk_overlap': 300,
+        'top_k': 15
+    }
 
 def check_api_key():
     """Check if OpenAI API key is configured"""
@@ -362,8 +379,8 @@ def display_chat_message(message: Dict, is_user: bool = True):
 
 # Main application
 def main():
-    st.markdown('<h1 class="main-header">🧠 RAG tester </h1>', unsafe_allow_html=True)
-    st.markdown("*Upload docs and prompt first*")
+    st.markdown('<h1 class="main-header">🧠 Enhanced RAG System</h1>', unsafe_allow_html=True)
+    st.markdown("*Customizable document Q&A with GPT-4*")
     
     # Check API key first
     if not check_api_key():
@@ -431,7 +448,8 @@ def main():
         system_prompt = st.text_area(
             "System Prompt",
             value=st.session_state.system_prompt,
-            height=300,
+            height=250,
+            placeholder="Write your custom system prompt here...\n\nExample:\nYou are an AI assistant with access to [document type].\nProvide [type of responses] based on the documents.\nKeep responses [tone/style].",
             help="This prompt defines how the AI assistant will behave. It will be prepended to every query.",
             key="prompt_input"
         )
@@ -455,12 +473,136 @@ def main():
         
         st.divider()
         
+        # Advanced Configuration Section
+        st.subheader("⚙️ Step 3: RAG Settings")
+        
+        st.markdown("""
+        <div class="config-section">
+        Adjust RAG system parameters for optimal performance.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("🔧 Configuration", expanded=False):
+            # Model Settings
+            st.markdown("**🤖 Model Configuration**")
+            
+            llm_model = st.selectbox(
+                "LLM Model",
+                options=[
+                    "gpt-4-turbo-preview",
+                    "gpt-4",
+                    "gpt-3.5-turbo",
+                    "gpt-4o"
+                ],
+                index=0,
+                help="The AI model that generates responses. GPT-4 Turbo is most powerful."
+            )
+            
+            embedding_model = st.selectbox(
+                "Embedding Model",
+                options=[
+                    "text-embedding-3-large",
+                    "text-embedding-3-small",
+                    "text-embedding-ada-002"
+                ],
+                index=0,
+                help="Model that converts text to vectors. 3-large is most accurate but slower."
+            )
+            
+            temperature = st.slider(
+                "Temperature",
+                min_value=0.0,
+                max_value=2.0,
+                value=st.session_state.rag_config.get('temperature', 0.1),
+                step=0.1,
+                help="Controls randomness. 0.0 = deterministic, 2.0 = very creative."
+            )
+            
+            st.divider()
+            
+            # Chunking Settings
+            st.markdown("**📏 Document Processing**")
+            
+            chunk_size = st.slider(
+                "Chunk Size (characters)",
+                min_value=500,
+                max_value=3000,
+                value=st.session_state.rag_config.get('chunk_size', 1500),
+                step=100,
+                help="Size of text chunks. Larger = more context, smaller = more precise."
+            )
+            
+            chunk_overlap = st.slider(
+                "Chunk Overlap (characters)",
+                min_value=0,
+                max_value=500,
+                value=st.session_state.rag_config.get('chunk_overlap', 300),
+                step=50,
+                help="How much chunks overlap. Prevents splitting important info."
+            )
+            
+            st.divider()
+            
+            # Retrieval Settings
+            st.markdown("**🔍 Retrieval Configuration**")
+            
+            top_k = st.slider(
+                "Top-K Retrieval",
+                min_value=1,
+                max_value=30,
+                value=st.session_state.rag_config.get('top_k', 15),
+                step=1,
+                help="Number of relevant chunks to retrieve. More = comprehensive but slower."
+            )
+            
+            st.divider()
+            
+            # Save configuration button
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("💾 Save Settings", key="save_rag_config"):
+                    st.session_state.rag_config = {
+                        'llm_model': llm_model,
+                        'embedding_model': embedding_model,
+                        'temperature': temperature,
+                        'chunk_size': chunk_size,
+                        'chunk_overlap': chunk_overlap,
+                        'top_k': top_k
+                    }
+                    st.success("✅ Settings saved!")
+            
+            with col2:
+                if st.button("🔄 Reset to Defaults", key="reset_rag_config"):
+                    st.session_state.rag_config = {
+                        'llm_model': 'gpt-4-turbo-preview',
+                        'embedding_model': 'text-embedding-3-large',
+                        'temperature': 0.1,
+                        'chunk_size': 1500,
+                        'chunk_overlap': 300,
+                        'top_k': 15
+                    }
+                    st.success("✅ Reset to defaults!")
+                    st.rerun()
+        
+        # Show current configuration
+        st.caption("**Current Settings:**")
+        config = st.session_state.rag_config
+        st.caption(f"• Model: {config['llm_model']}")
+        st.caption(f"• Embeddings: {config['embedding_model']}")
+        st.caption(f"• Temperature: {config['temperature']}")
+        st.caption(f"• Chunk Size: {config['chunk_size']}")
+        st.caption(f"• Overlap: {config['chunk_overlap']}")
+        st.caption(f"• Top-K: {config['top_k']}")
+        
+        st.divider()
+        
         # Initialize system button
-        st.subheader("🚀 Step 3: Initialize System")
+        st.subheader("🚀 Step 4: Initialize System")
         
         if st.session_state.uploaded_files and st.session_state.system_prompt:
             if st.button("🚀 Initialize RAG System", type="primary"):
-                config = RAGConfig()
+                # Use custom config from session state
+                config = RAGConfig(**st.session_state.rag_config)
                 
                 with st.spinner("Initializing RAG system..."):
                     rag_system = setup_rag_system(config, st.session_state.temp_dir)
@@ -480,17 +622,21 @@ def main():
         if st.session_state.system_ready:
             st.success("✅ System Ready")
             
-            # Show optimized system stats
-            st.subheader("📊 System Configuration")
-            st.markdown("""
-            **Optimized for Demo:**
-            - **Model:** GPT-4 Turbo (Most Powerful)
-            - **Embeddings:** text-embedding-3-large
-            - **Chunk Size:** 1500 characters
-            - **Retrieval:** Top 15 most relevant chunks
-            - **Documents:** """ + str(st.session_state.documents_processed) + """
-            - **Chunks:** """ + str(st.session_state.chunks_created) + """
-            - **Prompt Length:** """ + str(len(st.session_state.system_prompt)) + """ chars""")
+            # Show system stats
+            st.subheader("📊 System Status")
+            config = st.session_state.rag_system['config']
+            st.markdown(f"""
+            **Current Configuration:**
+            - **Model:** {config.llm_model}
+            - **Embeddings:** {config.embedding_model}
+            - **Temperature:** {config.temperature}
+            - **Chunk Size:** {config.chunk_size} chars
+            - **Chunk Overlap:** {config.chunk_overlap} chars
+            - **Retrieval:** Top {config.top_k} chunks
+            - **Documents:** {st.session_state.documents_processed}
+            - **Chunks:** {st.session_state.chunks_created}
+            - **Prompt:** {len(st.session_state.system_prompt)} chars
+            """)
         else:
             st.warning("⚠️ System Not Ready")
         
@@ -510,6 +656,14 @@ def main():
             st.session_state.chunks_created = 0
             st.session_state.uploaded_files = []
             st.session_state.system_prompt = DEFAULT_SYSTEM_PROMPT
+            st.session_state.rag_config = {
+                'llm_model': 'gpt-4-turbo-preview',
+                'embedding_model': 'text-embedding-3-large',
+                'temperature': 0.1,
+                'chunk_size': 1500,
+                'chunk_overlap': 300,
+                'top_k': 15
+            }
             if os.path.exists(st.session_state.temp_dir):
                 shutil.rmtree(st.session_state.temp_dir)
             st.success("✅ System reset!")
